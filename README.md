@@ -27,7 +27,7 @@ Each feature has its own persisted on/off toggle. All of them require the app's 
 
 ## Requirements
 
-- BlackBerry KEY2 on LineageOS (Android 15).
+- BlackBerry KEY2 on LineageOS Android 15 or 16 (untested).
 - Root (APatch or Magisk) for Nav Lock and the AudioFX-disable button.
 - Android SDK command-line tools for building (build-tools 35.0.0, platform android-34).
 
