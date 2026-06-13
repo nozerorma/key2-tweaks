@@ -1,0 +1,20 @@
+# Build outputs (raw aapt2/d8 pipeline)
+bin/
+obj/
+gen/
+
+# Artifacts
+*.apk
+*.idsig
+*.dex
+*.class
+
+# Signing keystores — never commit these
+*.jks
+*.keystore
+
+# OS / editor cruft
+.DS_Store
+*.swp
+.idea/
+*.iml

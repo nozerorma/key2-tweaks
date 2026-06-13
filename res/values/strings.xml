@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Key2 Tweaks: disables the capacitive navigation buttons while the keyboard is showing, and lets you type the lockscreen PIN on the physical keyboard.</string>
+</resources>
