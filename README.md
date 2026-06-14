@@ -10,7 +10,7 @@ A small utility app for the **BlackBerry KEY2** running **LineageOS 22.x (Androi
 
 | Feature | What it does | Root? |
 |---|---|---|
-| **Keyboard Nav Lock** | Stops accidental Back / Home / Recents presses *while the keyboard is showing*. Two modes: **Disable** (cuts all three buttons) or **Double-tap Back** (keeps the buttons; a single tap on Back is ignored, only a double-tap fires it). Plus **Disable ALWAYS** — keep the buttons off permanently (navigate by gestures). | Disable/Always: **yes**; Double-tap: no |
+| **Keyboard Nav Lock** | Stops accidental Back / Home / Recents presses *while the keyboard is showing*. Two modes: **Disable** (cuts all three buttons) or **Double-tap Back** (keeps the buttons; a single tap on Back is ignored, only a double-tap fires it). Plus **Disable ALWAYS** — keep the buttons off permanently (navigate by gestures). This must be coupled with a gesture app (such as FNG). | Disable/Always: **yes**; Double-tap: no |
 | **Lockscreen PIN on Keyboard** | Type your lockscreen PIN on the physical keyboard. Digits map phone-dialpad style: `W E R = 1 2 3`, `S D F = 4 5 6`, `Z X C = 7 8 9`, `Q = 0`. Enter confirms, Backspace deletes. | Not needed |
 | **Audio FX** | System-wide Equalizer + Bass Boost + Loudness with four independent profiles — **Speaker / Wired / Bluetooth / USB-C** — auto-switched by the active output. | Not needed for the EQ¹ |
 
