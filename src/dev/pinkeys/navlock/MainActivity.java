@@ -106,6 +106,13 @@ public class MainActivity extends Activity {
             Key2AccessibilityService.KEY_NAV_GESTURE, false, null));
 
         root.addView(makeSwitch(
+            "   ↳ Disable nav buttons ALWAYS",
+            "[ROOT REQUIRED] Keeps Back / Home / Recents disabled permanently — not "
+                + "just while typing. Navigate with gestures instead. Overrides the "
+                + "modes above; turn off to restore the buttons.",
+            Key2AccessibilityService.KEY_NAV_ALWAYS_OFF, false, null));
+
+        root.addView(makeSwitch(
             "Lockscreen PIN on Keyboard",
             "[NO ROOT NEEDED] Type your lockscreen PIN on the physical keyboard. "
                 + "Digits map phone-dialpad style: W E R = 1 2 3, S D F = 4 5 6, "

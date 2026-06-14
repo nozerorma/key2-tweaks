@@ -40,6 +40,7 @@ public class Key2AccessibilityService extends AccessibilityService {
     static final String PREFS = "key2tweaks";
     static final String KEY_NAV_LOCK = "nav_lock_enabled";
     static final String KEY_NAV_GESTURE = "nav_gesture_mode"; // false=disable buttons, true=double-tap gate (Back)
+    static final String KEY_NAV_ALWAYS_OFF = "nav_always_off"; // disable nav buttons permanently
     static final String KEY_PIN_INPUT = "pin_input_enabled";
 
     private static final long LONG_PRESS_MS = 350;
@@ -56,10 +57,10 @@ public class Key2AccessibilityService extends AccessibilityService {
         new SharedPreferences.OnSharedPreferenceChangeListener() {
             public void onSharedPreferenceChanged(SharedPreferences sp, String key) {
                 if (key == null) return;
-                // If nav lock is off, or in gesture mode, the buttons must stay live.
-                if ((KEY_NAV_LOCK.equals(key) || KEY_NAV_GESTURE.equals(key))
-                        && (!navLockEnabled() || gestureMode()) && navDisabled) {
-                    applyNavDisabled(false);
+                // Any nav setting change -> recompute the desired button state.
+                if (KEY_NAV_LOCK.equals(key) || KEY_NAV_GESTURE.equals(key)
+                        || KEY_NAV_ALWAYS_OFF.equals(key)) {
+                    reconcileNav();
                 }
                 // Any audio-related change -> reconcile the DSP chain.
                 if (audioFx != null
@@ -84,7 +85,7 @@ public class Key2AccessibilityService extends AccessibilityService {
                         | AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             setServiceInfo(info);
         }
-        applyNavDisabled(false); // known-good start
+        reconcileNav(); // apply the configured nav state on connect
 
         audioFx = new AudioFx(this, prefs);
         audioFx.refresh();
@@ -92,6 +93,7 @@ public class Key2AccessibilityService extends AccessibilityService {
 
     private boolean navLockEnabled() { return prefs == null || prefs.getBoolean(KEY_NAV_LOCK, true); }
     private boolean gestureMode() { return prefs != null && prefs.getBoolean(KEY_NAV_GESTURE, false); }
+    private boolean alwaysOff() { return prefs != null && prefs.getBoolean(KEY_NAV_ALWAYS_OFF, false); }
     private boolean pinInputEnabled() { return prefs != null && prefs.getBoolean(KEY_PIN_INPUT, true); }
 
     // ---------------------------------------------------------------- Nav Lock
@@ -99,16 +101,20 @@ public class Key2AccessibilityService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         imeActive = isImeVisible();
-        if (!navLockEnabled() || gestureMode()) {
-            // Off, or gesture-gate mode: keep the hardware buttons enabled;
-            // gesture mode does its filtering in onKeyEvent instead.
-            if (navDisabled) applyNavDisabled(false);
-            return;
+        reconcileNav();
+    }
+
+    /** Compute and apply the desired capacitive-button state from current settings. */
+    private void reconcileNav() {
+        boolean desired;
+        if (alwaysOff()) {
+            desired = true;                       // permanently disabled
+        } else if (!navLockEnabled() || gestureMode()) {
+            desired = false;                      // buttons stay live (gesture mode gates in onKeyEvent)
+        } else {
+            desired = imeActive;                  // disable-while-typing mode
         }
-        // Disable mode: cut the buttons entirely while the keyboard is up.
-        if (imeActive != navDisabled) {
-            applyNavDisabled(imeActive);
-        }
+        if (desired != navDisabled) applyNavDisabled(desired);
     }
 
     private boolean isImeVisible() {
