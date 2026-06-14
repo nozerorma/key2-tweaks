@@ -4,7 +4,9 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.TypedArray;
 import android.graphics.Color;
+import android.os.Build;
 import android.graphics.Typeface;
 import android.media.AudioManager;
 import android.media.audiofx.Equalizer;
@@ -38,21 +40,45 @@ public class MainActivity extends Activity {
     private static final int PAD = 48;
     private static final String LINEAGE_AUDIOFX = "org.lineageos.audiofx";
 
+    // Resolved at runtime from the Material theme + Monet dynamic palette.
+    private int colAccent, colPrimary, colSecondary, colOk, colBad;
+
+    /** A system Monet color (API 31+), falling back to a fixed color otherwise. */
+    private int monet(int sysColorRes, int fallback) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            try { return getColor(sysColorRes); } catch (Throwable ignored) {}
+        }
+        return fallback;
+    }
+
+    /** Resolve a theme color attribute (e.g. textColorPrimary) to an int. */
+    private int themeAttrColor(int attr, int fallback) {
+        TypedArray a = getTheme().obtainStyledAttributes(new int[]{attr});
+        try { return a.getColor(0, fallback); } finally { a.recycle(); }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(Key2AccessibilityService.PREFS, MODE_PRIVATE);
 
+        // Material You / Monet palette (with sane fallbacks pre-Android 12).
+        colAccent = monet(android.R.color.system_accent1_600,
+            themeAttrColor(android.R.attr.colorAccent, Color.parseColor("#1565C0")));
+        colPrimary = themeAttrColor(android.R.attr.textColorPrimary, Color.BLACK);
+        colSecondary = themeAttrColor(android.R.attr.textColorSecondary, Color.GRAY);
+        colOk = Color.parseColor("#43A047");
+        colBad = Color.parseColor("#E53935");
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
         root.setPadding(64, 80, 64, 64);
 
         TextView title = new TextView(this);
         title.setText("Key2 Tweaks");
         title.setTextSize(28);
         title.setTypeface(null, Typeface.BOLD);
-        title.setTextColor(Color.BLACK);
+        title.setTextColor(colPrimary);
         root.addView(title);
 
         TextView legend = new TextView(this);
@@ -60,17 +86,24 @@ public class MainActivity extends Activity {
             + "(granted via APatch/Magisk); [NO ROOT NEEDED] works with just the "
             + "accessibility service. All features need the accessibility service enabled.");
         legend.setTextSize(12);
-        legend.setTextColor(Color.parseColor("#777777"));
+        legend.setTextColor(colSecondary);
         legend.setPadding(0, 12, 0, 0);
         root.addView(legend);
 
         // --- Feature toggles -------------------------------------------------
         root.addView(makeSwitch(
             "Keyboard Nav Lock",
-            "[ROOT REQUIRED] Disables the capacitive Back / Home / Recents buttons "
-                + "while the keyboard is showing, so you don't hit them when reaching "
-                + "for the top keyboard row. Writes a protected sysfs node via root.",
+            "Stops accidental Back / Home / Recents presses while the keyboard is "
+                + "showing. Pick a mode with the two options below.",
             Key2AccessibilityService.KEY_NAV_LOCK, true, null));
+
+        root.addView(makeSwitch(
+            "   ↳ Double-tap Back (keep button)",
+            "ON [NO ROOT NEEDED]: while typing, a single tap on Back is ignored — only "
+                + "a double-tap fires it. (Only Back works this way; Android won't let "
+                + "an app gate Home/Recents.) "
+                + "OFF [ROOT REQUIRED]: all three buttons are fully disabled while typing.",
+            Key2AccessibilityService.KEY_NAV_GESTURE, false, null));
 
         root.addView(makeSwitch(
             "Lockscreen PIN on Keyboard",
@@ -135,7 +168,7 @@ public class MainActivity extends Activity {
         sw.setText(label);
         sw.setTextSize(18);
         sw.setTypeface(null, Typeface.BOLD);
-        sw.setTextColor(Color.parseColor("#1565C0"));
+        sw.setTextColor(colAccent);
         sw.setChecked(prefs.getBoolean(prefKey, def));
         sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton b, boolean checked) {
@@ -149,7 +182,7 @@ public class MainActivity extends Activity {
             TextView d = new TextView(this);
             d.setText(desc);
             d.setTextSize(13);
-            d.setTextColor(Color.parseColor("#555555"));
+            d.setTextColor(colSecondary);
             d.setPadding(0, 4, 0, 0);
             box.addView(d);
         }
@@ -213,18 +246,18 @@ public class MainActivity extends Activity {
         } catch (Throwable t) {
             TextView err = new TextView(this);
             err.setText("Audio effects are not available on this ROM.");
-            err.setTextColor(Color.parseColor("#C62828"));
+            err.setTextColor(colBad);
             controls.addView(err);
         } finally {
             if (probe != null) try { probe.release(); } catch (Throwable ignored) {}
         }
 
         TextView profLabel = new TextView(this);
-        profLabel.setText("Editing tuning for: " + ("hp".equals(prof) ? "HEADPHONES" : "SPEAKER")
+        profLabel.setText("Editing tuning for: " + AudioFx.profileLabel(prof)
             + "  (auto-selected by output)");
         profLabel.setTextSize(13);
         profLabel.setTypeface(null, Typeface.BOLD);
-        profLabel.setTextColor(Color.parseColor("#1565C0"));
+        profLabel.setTextColor(colAccent);
         profLabel.setPadding(0, 24, 0, 8);
         controls.addView(profLabel);
 
@@ -285,7 +318,7 @@ public class MainActivity extends Activity {
 
         final TextView tv = new TextView(this);
         tv.setTextSize(13);
-        tv.setTextColor(Color.parseColor("#333333"));
+        tv.setTextColor(colSecondary);
         box.addView(tv);
 
         final SeekBar sb = new SeekBar(this);
@@ -342,7 +375,7 @@ public class MainActivity extends Activity {
     private void refreshAudioFxConflictStatus() {
         if (audiofxStatus == null) return;
         audiofxStatus.setText("LineageOS AudioFX: checking…");
-        audiofxStatus.setTextColor(Color.parseColor("#444444"));
+        audiofxStatus.setTextColor(colSecondary);
         new Thread(new Runnable() {
             public void run() {
                 final boolean installed = isLineageAudioFxInstalled();
@@ -351,14 +384,14 @@ public class MainActivity extends Activity {
                     public void run() {
                         if (!installed) {
                             audiofxStatus.setText("LineageOS AudioFX: not present ✓");
-                            audiofxStatus.setTextColor(Color.parseColor("#2E7D32"));
+                            audiofxStatus.setTextColor(colOk);
                         } else if (disabled) {
                             audiofxStatus.setText("LineageOS AudioFX: DISABLED ✓ (no conflict)");
-                            audiofxStatus.setTextColor(Color.parseColor("#2E7D32"));
+                            audiofxStatus.setTextColor(colOk);
                         } else {
                             audiofxStatus.setText("⚠ LineageOS AudioFX is ENABLED — it conflicts. "
                                 + "Tap below to disable it (or just turn Audio FX on).");
-                            audiofxStatus.setTextColor(Color.parseColor("#C62828"));
+                            audiofxStatus.setTextColor(colBad);
                         }
                     }
                 });
@@ -373,13 +406,13 @@ public class MainActivity extends Activity {
         super.onResume();
         if (isServiceEnabled()) {
             statusView.setText("✓ Accessibility service ENABLED");
-            statusView.setTextColor(Color.parseColor("#2E7D32"));
+            statusView.setTextColor(colOk);
         } else {
             statusView.setText("✗ Service disabled — tap below and enable \"Key2 Tweaks\".");
-            statusView.setTextColor(Color.parseColor("#C62828"));
+            statusView.setTextColor(colBad);
         }
         rootView.setText("Root: tap \"Test Root Access\" to check.");
-        rootView.setTextColor(Color.parseColor("#444444"));
+        rootView.setTextColor(colSecondary);
         refreshAudioFxConflictStatus();
     }
 
@@ -397,7 +430,7 @@ public class MainActivity extends Activity {
 
     private void testRoot() {
         rootView.setText("Root: checking…");
-        rootView.setTextColor(Color.parseColor("#444444"));
+        rootView.setTextColor(colSecondary);
         new Thread(new Runnable() {
             public void run() {
                 final String out = runRootCapture("id");
@@ -406,10 +439,10 @@ public class MainActivity extends Activity {
                     public void run() {
                         if (ok) {
                             rootView.setText("✓ Root granted (" + out.trim() + ")");
-                            rootView.setTextColor(Color.parseColor("#2E7D32"));
+                            rootView.setTextColor(colOk);
                         } else {
                             rootView.setText("✗ Root denied / unavailable.\nGrant root to Key2 Tweaks in APatch.");
-                            rootView.setTextColor(Color.parseColor("#C62828"));
+                            rootView.setTextColor(colBad);
                         }
                     }
                 });

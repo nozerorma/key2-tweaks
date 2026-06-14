@@ -10,9 +10,13 @@ A small utility app for the **BlackBerry KEY2** running **LineageOS 22.x (Androi
 
 | Feature | What it does | Root? |
 |---|---|---|
-| **Keyboard Nav Lock** | Disables the capacitive Back / Home / Recents buttons *while the keyboard is showing*, so you don't trigger them by accident when reaching for the top keyboard row. | **Required** |
+| **Keyboard Nav Lock** | Stops accidental Back / Home / Recents presses *while the keyboard is showing*. Two modes: **Disable** (cuts all three buttons) or **Double-tap Back** (keeps the buttons; a single tap on Back is ignored, only a double-tap fires it). | Disable: **yes**; Double-tap: no |
 | **Lockscreen PIN on Keyboard** | Type your lockscreen PIN on the physical keyboard. Digits map phone-dialpad style: `W E R = 1 2 3`, `S D F = 4 5 6`, `Z X C = 7 8 9`, `Q = 0`. Enter confirms, Backspace deletes. | Not needed |
-| **Audio FX** | System-wide Equalizer + Bass Boost + Loudness with separate **Speaker / Headphone** profiles (auto-switched by output). | Not needed for the EQ¹ |
+| **Audio FX** | System-wide Equalizer + Bass Boost + Loudness with four independent profiles — **Speaker / Wired / Bluetooth / USB-C** — auto-switched by the active output. | Not needed for the EQ¹ |
+
+The UI uses **Material You** (DeviceDefault DayNight theme) and picks up the system **Monet** accent and dark/light mode.
+
+> Note on Nav Lock modes: only **Back** can be gated by a double-tap — Android's window policy acts on **Home/Recents** regardless of what an accessibility service does, so gating those requires the root "Disable" mode.
 
 ¹ Disabling the conflicting **LineageOS AudioFX** (see below) requires root; a button is provided.
 

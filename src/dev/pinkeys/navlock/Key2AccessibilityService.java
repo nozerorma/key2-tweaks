@@ -10,18 +10,25 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.io.OutputStream;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * Combined accessibility service for Key2 Tweaks.
  *
- *  - Nav Lock: while the on-screen keyboard (IME) is visible, disables the Key2's
- *    capacitive Back / Home / Recents buttons by writing the root-only sysfs node
- *    /sys/class/input/eventN/device/0dbutton (1 = on, 0 = off). The eventN index
- *    is resolved by device name (synaptics_dsx_2) so it survives reboots.
+ *  - Nav Lock: while the on-screen keyboard (IME) is visible, stops accidental
+ *    Back / Home / Recents presses. Two modes:
+ *      * Disable (root): cut the capacitive keys via the sysfs node
+ *        /sys/class/input/eventN/device/0dbutton (1 = on, 0 = off), resolved by
+ *        device name (synaptics_dsx_2) so it survives reboots.
+ *      * Gesture (no root): keep the keys live but gate BACK in onKeyEvent —
+ *        a single tap is swallowed; only a double-tap fires it. Only Back is
+ *        gateable; Home/Recents are acted on by the window policy regardless of
+ *        accessibility consumption.
  *
  *  - PIN Input: on the lockscreen, maps physical-keyboard presses to taps on the
  *    SystemUI PIN pad so the PIN can be typed on the hardware keyboard.
@@ -32,10 +39,16 @@ public class Key2AccessibilityService extends AccessibilityService {
 
     static final String PREFS = "key2tweaks";
     static final String KEY_NAV_LOCK = "nav_lock_enabled";
+    static final String KEY_NAV_GESTURE = "nav_gesture_mode"; // false=disable buttons, true=double-tap gate (Back)
     static final String KEY_PIN_INPUT = "pin_input_enabled";
+
+    private static final long LONG_PRESS_MS = 350;
+    private static final long DOUBLE_TAP_MS = 300;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private volatile boolean navDisabled = false; // last state pushed to kernel
+    private volatile boolean imeActive = false;   // keyboard currently showing
+    private final Map<Integer, Long> lastNavTap = new HashMap<>(); // keycode -> last short-tap time
     private SharedPreferences prefs;
     private AudioFx audioFx;
 
@@ -43,8 +56,9 @@ public class Key2AccessibilityService extends AccessibilityService {
         new SharedPreferences.OnSharedPreferenceChangeListener() {
             public void onSharedPreferenceChanged(SharedPreferences sp, String key) {
                 if (key == null) return;
-                // If nav lock is switched off, restore the buttons right away.
-                if (KEY_NAV_LOCK.equals(key) && !navLockEnabled() && navDisabled) {
+                // If nav lock is off, or in gesture mode, the buttons must stay live.
+                if ((KEY_NAV_LOCK.equals(key) || KEY_NAV_GESTURE.equals(key))
+                        && (!navLockEnabled() || gestureMode()) && navDisabled) {
                     applyNavDisabled(false);
                 }
                 // Any audio-related change -> reconcile the DSP chain.
@@ -77,19 +91,23 @@ public class Key2AccessibilityService extends AccessibilityService {
     }
 
     private boolean navLockEnabled() { return prefs == null || prefs.getBoolean(KEY_NAV_LOCK, true); }
+    private boolean gestureMode() { return prefs != null && prefs.getBoolean(KEY_NAV_GESTURE, false); }
     private boolean pinInputEnabled() { return prefs != null && prefs.getBoolean(KEY_PIN_INPUT, true); }
 
     // ---------------------------------------------------------------- Nav Lock
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (!navLockEnabled()) {
+        imeActive = isImeVisible();
+        if (!navLockEnabled() || gestureMode()) {
+            // Off, or gesture-gate mode: keep the hardware buttons enabled;
+            // gesture mode does its filtering in onKeyEvent instead.
             if (navDisabled) applyNavDisabled(false);
             return;
         }
-        boolean imeVisible = isImeVisible();
-        if (imeVisible != navDisabled) {
-            applyNavDisabled(imeVisible);
+        // Disable mode: cut the buttons entirely while the keyboard is up.
+        if (imeActive != navDisabled) {
+            applyNavDisabled(imeActive);
         }
     }
 
@@ -144,10 +162,21 @@ public class Key2AccessibilityService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        if (!pinInputEnabled()) return false;
-        if (event == null || event.getAction() != KeyEvent.ACTION_DOWN) return false;
-        if (!isDeviceLocked()) return false;
+        if (event == null) return false;
         int kc = event.getKeyCode();
+
+        // Nav gesture-gate (Back only): while typing, swallow a quick tap on Back
+        // and fire it only on a long-press or double-tap. Home/Recents can't be
+        // gated — Android's window policy acts on them regardless of consumption.
+        if (navLockEnabled() && gestureMode() && imeActive
+                && kc == KeyEvent.KEYCODE_BACK && !isDeviceLocked()) {
+            return handleNavGesture(event, kc);
+        }
+
+        // PIN Input: map physical keys to the lockscreen PIN pad.
+        if (!pinInputEnabled()) return false;
+        if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+        if (!isDeviceLocked()) return false;
 
         if (kc == KeyEvent.KEYCODE_DPAD_CENTER || kc == KeyEvent.KEYCODE_ENTER) {
             return clickPinEnter();
@@ -158,6 +187,41 @@ public class Key2AccessibilityService extends AccessibilityService {
         String digit = keyCodeToDigit(kc);
         if (digit != null) return clickPinButton(digit);
         return false;
+    }
+
+    private static boolean isNavKey(int kc) {
+        return kc == KeyEvent.KEYCODE_BACK
+            || kc == KeyEvent.KEYCODE_HOME
+            || kc == KeyEvent.KEYCODE_APP_SWITCH;
+    }
+
+    /** Consume the nav key; perform its action only on a double-tap. */
+    private boolean handleNavGesture(KeyEvent event, int kc) {
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            long duration = event.getEventTime() - event.getDownTime();
+            long now = event.getEventTime();
+            if (duration < LONG_PRESS_MS) { // ignore holds; count quick taps
+                Long last = lastNavTap.get(kc);
+                if (last != null && (now - last) <= DOUBLE_TAP_MS) {
+                    performNav(kc);
+                    lastNavTap.remove(kc);
+                } else {
+                    lastNavTap.put(kc, now); // first tap; wait for the second
+                }
+            }
+        }
+        return true; // always swallow the raw key so a single tap does nothing
+    }
+
+    private void performNav(int kc) {
+        int action;
+        switch (kc) {
+            case KeyEvent.KEYCODE_BACK:       action = GLOBAL_ACTION_BACK;    break;
+            case KeyEvent.KEYCODE_HOME:       action = GLOBAL_ACTION_HOME;    break;
+            case KeyEvent.KEYCODE_APP_SWITCH: action = GLOBAL_ACTION_RECENTS; break;
+            default: return;
+        }
+        performGlobalAction(action);
     }
 
     private boolean isDeviceLocked() {

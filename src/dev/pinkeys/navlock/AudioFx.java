@@ -29,7 +29,8 @@ import java.util.concurrent.Executors;
  * rather than only the global mix (session 0) — that's what actually processes
  * playback on Qualcomm ROMs. We also keep a session-0 set as a fallback.
  *
- * Two tuning profiles, auto-selected by output: "spk" (loudspeaker) / "hp".
+ * Four tuning profiles, auto-selected by output: "spk" (loudspeaker),
+ * "wired" (3.5mm), "bt" (Bluetooth A2DP), "usb" (USB-C).
  */
 public class AudioFx {
 
@@ -215,22 +216,40 @@ public class AudioFx {
 
     // ------------------------------------------------------- output detection
 
+    /** Active output profile: "usb", "wired", "bt", or "spk" (priority in that order). */
     String activeProfile() { return profileFor(am); }
 
     static String profileFor(AudioManager am) {
+        boolean wired = false, bt = false, usb = false;
         try {
             AudioDeviceInfo[] outs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
             for (AudioDeviceInfo d : outs) {
                 switch (d.getType()) {
                     case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
                     case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                        wired = true; break;
                     case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                        bt = true; break;
                     case AudioDeviceInfo.TYPE_USB_HEADSET:
-                        return "hp";
+                    case AudioDeviceInfo.TYPE_USB_DEVICE:
+                        usb = true; break;
                 }
             }
         } catch (Throwable ignored) {}
+        if (usb) return "usb";
+        if (wired) return "wired";
+        if (bt) return "bt";
         return "spk";
+    }
+
+    /** Human-readable name for a profile key. */
+    static String profileLabel(String prof) {
+        switch (prof) {
+            case "usb":   return "USB-C HEADPHONES";
+            case "wired": return "WIRED HEADPHONES";
+            case "bt":    return "BLUETOOTH";
+            default:      return "SPEAKER";
+        }
     }
 
     private void registerDeviceCallback() {
@@ -258,16 +277,35 @@ public class AudioFx {
     // -------- recommended defaults (millibels): fuller, clearer, louder
 
     static int defaultBandMb(String prof, int freqHz) {
-        boolean spk = "spk".equals(prof);
-        if (freqHz < 120)   return spk ? 600 : 400;  // sub-bass
-        if (freqHz < 400)   return spk ? 250 : 100;  // warmth / lower mids
-        if (freqHz < 1500)  return spk ? 150 : 0;    // mids body
-        if (freqHz < 6000)  return spk ? 350 : 200;  // presence / clarity
-        return spk ? 250 : 100;                        // air
+        switch (prof) {
+            case "spk": // small speaker: lots of help across the board
+                if (freqHz < 120)  return 600;
+                if (freqHz < 400)  return 250;
+                if (freqHz < 1500) return 150;
+                if (freqHz < 6000) return 350;
+                return 250;
+            case "bt":  // BT often dull/compressed: a touch more bass + air
+                if (freqHz < 120)  return 500;
+                if (freqHz < 400)  return 150;
+                if (freqHz < 1500) return 0;
+                if (freqHz < 6000) return 250;
+                return 200;
+            default:    // wired / usb: gentle, near-flat headphone curve
+                if (freqHz < 120)  return 400;
+                if (freqHz < 400)  return 100;
+                if (freqHz < 1500) return 0;
+                if (freqHz < 6000) return 200;
+                return 100;
+        }
     }
 
-    static int defaultBass(String prof) { return "spk".equals(prof) ? 600 : 300; }
-    static int defaultLoud(String prof) { return "spk".equals(prof) ? 700 : 300; } // mB
+    static int defaultBass(String prof) {
+        switch (prof) { case "spk": return 600; case "bt": return 400; default: return 300; }
+    }
+
+    static int defaultLoud(String prof) { // millibels of makeup gain
+        switch (prof) { case "spk": return 700; case "bt": return 400; default: return 300; }
+    }
 
     static int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 }
